@@ -1,0 +1,55 @@
+{
+  "manifest_version": 3,
+  "name": "ShaderToy to VSCode",
+  "version": "0.1.0",
+  "description": "Connects open shadertoy.com tabs to VS Code via local WebSocket",
+  "permissions": [
+    "storage",
+    "tabs",
+    "scripting",
+    "alarms"
+  ],
+  "host_permissions": [
+    "https://shadertoy.com/*",
+    "https://www.shadertoy.com/*",
+    "http://shadertoy.com/*",
+    "http://www.shadertoy.com/*",
+    "http://127.0.0.1/*"
+  ],
+  "background": {
+    "service_worker": "background.js",
+    "type": "module"
+  },
+  "content_scripts": [
+    {
+      "matches": [
+        "https://shadertoy.com/*",
+        "https://www.shadertoy.com/*",
+        "http://shadertoy.com/*",
+        "http://www.shadertoy.com/*"
+      ],
+      "js": [
+        "in-page.js"
+      ],
+      "world": "MAIN",
+      "run_at": "document_idle"
+    },
+    {
+      "matches": [
+        "https://shadertoy.com/*",
+        "https://www.shadertoy.com/*",
+        "http://shadertoy.com/*",
+        "http://www.shadertoy.com/*"
+      ],
+      "js": [
+        "content.js"
+      ],
+      "world": "ISOLATED",
+      "run_at": "document_idle"
+    }
+  ],
+  "action": {
+    "default_popup": "popup.html",
+    "default_title": "ShaderToy to VSCode"
+  }
+}

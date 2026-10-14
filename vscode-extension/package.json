@@ -1,0 +1,131 @@
+{
+  "name": "shadertoy-vscode",
+  "displayName": "ShaderToy VSCode",
+  "description": "Edit Shadertoy shaders directly in VS Code with live browser preview and two-way sync",
+  "version": "0.1.0",
+  "publisher": "shadertoy-vscode",
+  "engines": {
+    "vscode": "^1.85.0"
+  },
+  "categories": [
+    "Other",
+    "Programming Languages"
+  ],
+  "activationEvents": [
+    "*",
+    "onView:shadertoyTabsView",
+    "onStartupFinished"
+  ],
+  "main": "./dist/extension.js",
+  "contributes": {
+    "viewsContainers": {
+      "activitybar": [
+        {
+          "id": "shadertoy-vscode-sidebar",
+          "title": "ShaderToy VSCode",
+          "icon": "$(symbol-color)"
+        }
+      ]
+    },
+    "views": {
+      "shadertoy-vscode-sidebar": [
+        {
+          "id": "shadertoyTabsView",
+          "name": "Shadertoy Tabs"
+        }
+      ]
+    },
+    "viewsWelcome": [
+      {
+        "view": "shadertoyTabsView",
+        "contents": "No Shadertoy tabs detected.\n\n1. Ensure the browser extension is loaded in [chrome://extensions](chrome://extensions).\n2. Open [shadertoy.com](https://shadertoy.com/new) or refresh the tab.\n3. If needed, click [Restart Server](command:shadertoy.reconnect)."
+      }
+    ],
+    "commands": [
+      {
+        "command": "shadertoy.reconnect",
+        "title": "Reconnect with Browser",
+        "category": "ShaderToy"
+      },
+      {
+        "command": "shadertoy.openShader",
+        "title": "Open Shader in Editor",
+        "category": "ShaderToy"
+      },
+      {
+        "command": "shadertoy.recompile",
+        "title": "Recompile Shader in Browser",
+        "category": "ShaderToy"
+      },
+      {
+        "command": "shadertoy.copyFolderPath",
+        "title": "Copy Shader Folder Path",
+        "category": "ShaderToy",
+        "icon": "$(copy)"
+      },
+      {
+        "command": "shadertoy.openInTerminal",
+        "title": "Open Shader Folder in Terminal",
+        "category": "ShaderToy",
+        "icon": "$(terminal)"
+      },
+      {
+        "command": "shadertoy.revealInExplorer",
+        "title": "Reveal Shader Folder in OS File Explorer",
+        "category": "ShaderToy",
+        "icon": "$(folder-opened)"
+      }
+    ],
+    "menus": {
+      "view/item/context": [
+        {
+          "command": "shadertoy.copyFolderPath",
+          "when": "view == shadertoyTabsView && viewItem == shadertoy-session",
+          "group": "inline@1"
+        },
+        {
+          "command": "shadertoy.openInTerminal",
+          "when": "view == shadertoyTabsView && viewItem == shadertoy-session",
+          "group": "inline@2"
+        },
+        {
+          "command": "shadertoy.revealInExplorer",
+          "when": "view == shadertoyTabsView && viewItem == shadertoy-session",
+          "group": "inline@3"
+        }
+      ]
+    },
+    "configuration": {
+      "title": "ShaderToy VSCode",
+      "properties": {
+        "shadertoy.port": {
+          "type": "number",
+          "default": 27412,
+          "description": "Port of the local WebSocket server for the browser extension"
+        },
+        "shadertoy.tempDirectory": {
+          "type": "string",
+          "default": "",
+          "description": "Custom temporary directory path to store shader files on disk. Defaults to OS temp folder (shadertoy-vscode)."
+        }
+      }
+    }
+  },
+  "scripts": {
+    "vscode:prepublish": "npm run build",
+    "build": "node esbuild.js --production",
+    "watch": "node esbuild.js --watch",
+    "check-types": "tsc --noEmit"
+  },
+  "dependencies": {
+    "shadertoy-vscode": "file:..",
+    "ws": "^8.18.0"
+  },
+  "devDependencies": {
+    "@types/node": "^20.11.0",
+    "@types/vscode": "^1.85.0",
+    "@types/ws": "^8.5.10",
+    "esbuild": "^0.24.0",
+    "typescript": "^5.3.3"
+  }
+}

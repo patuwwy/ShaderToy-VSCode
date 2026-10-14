@@ -1,0 +1,17 @@
+{
+  "name": "shadertoy-vscode",
+  "version": "0.1.0",
+  "private": true,
+  "description": "ShaderToy VSCode - Live two-way integration between shadertoy.com and VS Code",
+  "scripts": {
+    "install:all": "npm install --prefix vscode-extension && npm install --prefix browser-extension",
+    "build:vscode": "npm run build --prefix vscode-extension",
+    "build:browser": "npm run build --prefix browser-extension",
+    "build": "npm run build:vscode && npm run build:browser",
+    "watch:vscode": "npm run watch --prefix vscode-extension",
+    "watch:browser": "npm run watch --prefix browser-extension"
+  },
+  "devDependencies": {
+    "@types/chrome": "^0.3.5"
+  }
+}
