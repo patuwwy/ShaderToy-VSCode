@@ -71,4 +71,3 @@ export interface ShaderCompileDiagnostic {
   severity: 'error' | 'warning';
   raw: string;
 }
-

@@ -12,8 +12,8 @@ let isAuthenticated = false;
 let hasLoggedConnectionFailure = false;
 const RECONNECT_INTERVAL_MS = 5000;
 const CONNECTION_TIMEOUT_MS = 4500;
-let reconnectTimer: any = null;
-let connectionTimeoutTimer: any = null;
+let reconnectTimer: ReturnType<typeof setTimeout> | null = null;
+let connectionTimeoutTimer: ReturnType<typeof setTimeout> | null = null;
 let currentPort = DEFAULT_WS_PORT;
 
 // Map: tabSessionId -> chromeTabId
@@ -48,15 +48,15 @@ function updateConnectionStatus(status: 'connected' | 'connecting' | 'disconnect
 
 function requestAllTabsToSendSnapshot() {
   chrome.tabs.query({}, (tabs) => {
-    const shadertoyTabs = tabs.filter((t) => t.id && t.url && t.url.includes('shadertoy.com'));
+    const shadertoyTabs = tabs.filter(t => t.id && t.url && t.url.includes('shadertoy.com'));
     console.log(`[ShaderToy to VSCode] Querying open Shadertoy tabs (found: ${shadertoyTabs.length})...`);
     sendWsMessage({
       type: 'DEBUG_LOG',
       component: 'background',
       message: `Found open Shadertoy tabs: ${shadertoyTabs.length}`,
-      data: shadertoyTabs.map((t) => ({ id: t.id, url: t.url, title: t.title })),
+      data: shadertoyTabs.map(t => ({ id: t.id, url: t.url, title: t.title })),
       timestamp: Date.now(),
-    } as any);
+    });
 
     shadertoyTabs.forEach((tab) => {
       if (!tab.id) return;
@@ -108,9 +108,10 @@ function connectWebSocket() {
 
   try {
     ws = new WebSocket(url);
-  } catch (err: any) {
+  } catch (err: unknown) {
+    const errMsg = err instanceof Error ? err.message : String(err);
     if (!hasLoggedConnectionFailure) {
-      console.warn(`[ShaderToy to VSCode] VS Code server not reachable at ${url}:`, err?.message || err);
+      console.warn(`[ShaderToy to VSCode] VS Code server not reachable at ${url}:`, errMsg);
       hasLoggedConnectionFailure = true;
     }
     scheduleReconnect();
@@ -180,12 +181,12 @@ function connectWebSocket() {
     scheduleReconnect();
   };
 
-  ws.onerror = (error: any) => {
+  ws.onerror = (error: Event) => {
     if (connectionTimeoutTimer) {
       clearTimeout(connectionTimeoutTimer);
       connectionTimeoutTimer = null;
     }
-    error?.preventDefault?.();
+    error.preventDefault?.();
     if (!hasLoggedConnectionFailure) {
       console.warn(`[ShaderToy to VSCode] VS Code server not running at ${url}. Will keep retrying in background every ${RECONNECT_INTERVAL_MS / 1000}s.`);
       hasLoggedConnectionFailure = true;
@@ -229,7 +230,7 @@ function flushQueue() {
 }
 
 function dispatchToTabs(msg: ProtocolMessage) {
-  const tabSessionId = (msg as any).tabSessionId;
+  const tabSessionId = 'tabSessionId' in msg ? (msg as { tabSessionId?: string }).tabSessionId : undefined;
   const directTabId = tabSessionId ? sessionToTabMap.get(tabSessionId) : undefined;
 
   const broadcastAll = () => {
@@ -239,7 +240,9 @@ function dispatchToTabs(msg: ProtocolMessage) {
           target: 'shadertoy-ai-inpage',
           type: msg.type,
           payload: msg,
-        }).catch(() => {});
+        }).catch(() => {
+          // ignore delivery failure
+        });
       });
     } else {
       chrome.tabs.query({ url: '*://*.shadertoy.com/*' }, (tabs) => {
@@ -249,7 +252,9 @@ function dispatchToTabs(msg: ProtocolMessage) {
               target: 'shadertoy-ai-inpage',
               type: msg.type,
               payload: msg,
-            }).catch(() => {});
+            }).catch(() => {
+              // ignore delivery failure
+            });
           }
         });
       });
@@ -300,7 +305,8 @@ function handleIncomingWsMessage(msg: ProtocolMessage) {
     case 'UPDATE_PASS':
     case 'RECOMPILE_COMMAND':
     case 'UPDATE_METADATA':
-    case 'SET_ACTIVE_PASS': {
+    case 'SET_ACTIVE_PASS':
+    case 'REQUEST_SNAPSHOT': {
       dispatchToTabs(msg);
       break;
     }
@@ -310,7 +316,7 @@ function handleIncomingWsMessage(msg: ProtocolMessage) {
 // Receive messages from content scripts on shadertoy.com pages
 chrome.runtime.onMessage.addListener((message, sender, _sendResponse) => {
   if (message && message.source === 'shadertoy-ai-content') {
-    const { source, ...protocolMsg } = message;
+    const { source: _source, ...protocolMsg } = message;
 
     if (protocolMsg.tabSessionId && sender.tab?.id) {
       sessionToTabMap.set(protocolMsg.tabSessionId, sender.tab.id);

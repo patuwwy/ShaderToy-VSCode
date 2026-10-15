@@ -2,8 +2,12 @@
   "name": "shadertoy-vscode",
   "displayName": "ShaderToy VSCode",
   "description": "Edit Shadertoy shaders directly in VS Code with live browser preview and two-way sync",
-  "version": "0.1.0",
+  "version": "0.2.0",
   "publisher": "shadertoy-vscode",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/patuwwy/ShaderToy-VSCode.git"
+  },
   "engines": {
     "vscode": "^1.85.0"
   },
@@ -114,8 +118,10 @@
   "scripts": {
     "vscode:prepublish": "npm run build",
     "build": "node esbuild.js --production",
+    "package": "npx @vscode/vsce package --no-dependencies",
     "watch": "node esbuild.js --watch",
-    "check-types": "tsc --noEmit"
+    "check-types": "tsc --noEmit",
+    "lint": "npm run check-types"
   },
   "dependencies": {
     "shadertoy-vscode": "file:..",

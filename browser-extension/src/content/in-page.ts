@@ -7,9 +7,99 @@ import {
   ShaderToyInput,
 } from '@shared/shadertoy';
 
+interface MonacoModelLike {
+  getValue(): string;
+  setValue(val: string): void;
+  onDidChangeContent(listener: () => void): void;
+  __shadertoyAiContentHooked?: boolean;
+}
+
+interface MonacoEditorLike {
+  getModel(): MonacoModelLike | null;
+  setModel(model: MonacoModelLike): void;
+  onDidChangeModel?(listener: () => void): void;
+  onDidChangeModelContent?(listener: () => void): void;
+  __shadertoyAiHooked?: boolean;
+  __shadertoyAiContentHooked?: boolean;
+}
+
+interface MonacoLike {
+  editor?: {
+    getModels?(): MonacoModelLike[];
+    getEditors?(): MonacoEditorLike[];
+    onDidCreateModel?(listener: (model: MonacoModelLike) => void): void;
+  };
+}
+
+interface ShaderToyInputRaw {
+  id?: number;
+  mId?: number;
+  src?: string;
+  mSrc?: string;
+  url?: string;
+  mUrl?: string;
+  ctype?: string | number;
+  type?: string | number;
+  mType?: string | number;
+  channel?: number;
+  mInfo?: { src?: string };
+  mSampler?: {
+    filter?: string;
+    wrap?: string;
+    vflip?: boolean;
+    srgb?: boolean;
+    internal?: string;
+  };
+  mPublished?: number;
+  published?: number;
+  [key: string]: unknown;
+}
+
+interface ShadertoyPassLike {
+  name?: string;
+  mName?: string;
+  description?: string;
+  mDescription?: string;
+  mType?: string | number;
+  mSource?: string;
+  mShaderCode?: string;
+  mCode?: string;
+  mError?: string;
+  mErrorLog?: string;
+  mEditor?: { getValue?: () => string; setValue?: (val: string) => void };
+  mInputs?: ShaderToyInputRaw[];
+  NewCode?: (code: string) => void;
+  [key: string]: unknown;
+}
+
+type ShadertoyInfoLike = Partial<ShaderToyInfo> & Record<string, unknown>;
+
+interface ShadertoyEffectLike {
+  mPasses?: ShadertoyPassLike[];
+  mActivePass?: number;
+  mShaderID?: string;
+  mInfo?: ShadertoyInfoLike;
+  mEditor?: { getValue?: () => string; setValue?: (val: string) => void };
+  SetPass?: (idx: number) => void;
+  SelectPass?: (idx: number) => void;
+  SetTab?: (idx: number) => void;
+  [key: string]: unknown;
+}
+
 interface WindowWithShaderToy extends Window {
-  gShaderToy?: any;
-  monaco?: any;
+  gShaderToy?: {
+    mEffect?: ShadertoyEffectLike;
+    mPasses?: ShadertoyPassLike[];
+    mActivePass?: number;
+    mShaderID?: string;
+    mInfo?: ShadertoyInfoLike;
+    mEditor?: { getValue?: () => string; setValue?: (val: string) => void };
+    SetPass?: (idx: number) => void;
+    SelectPass?: (idx: number) => void;
+    [key: string]: unknown;
+  };
+  monaco?: MonacoLike;
+  __shadertoyAiModelCreateHooked?: boolean;
 }
 
 const win = window as unknown as WindowWithShaderToy;
@@ -17,17 +107,17 @@ const tabSessionId = crypto.randomUUID();
 let isInitialized = false;
 
 // 1. Podstawowa komunikacja z content script
-function postToBridge(payload: any) {
+function postToBridge(payload: unknown) {
   window.postMessage(
     {
       source: 'shadertoy-ai-inpage',
       payload,
     },
-    '*'
+    '*',
   );
 }
 
-function sendDebugLog(message: string, data?: any) {
+function sendDebugLog(message: string, data?: unknown) {
   postToBridge({
     type: 'DEBUG_LOG',
     component: 'in-page',
@@ -46,19 +136,19 @@ function getShaderIdFromUrl(): string | null {
  * Zwraca właściwy obiekt Effect zawierający mPasses.
  * W architekturze Shadertoy passy znajdują się w gShaderToy.mEffect.mPasses.
  */
-function getEffect(): any {
+function getEffect(): ShadertoyEffectLike | null {
   const g = win.gShaderToy;
   if (!g) return null;
   if (g.mEffect && g.mEffect.mPasses && Array.isArray(g.mEffect.mPasses)) {
     return g.mEffect;
   }
   if (g.mPasses && Array.isArray(g.mPasses)) {
-    return g;
+    return g as ShadertoyEffectLike;
   }
-  return g.mEffect || g;
+  return g.mEffect || (g as ShadertoyEffectLike);
 }
 
-function getPassName(pass: any, index: number, allPasses: any[]): string {
+function getPassName(pass: ShadertoyPassLike, index: number, allPasses: ShadertoyPassLike[]): string {
   if (pass.mName && typeof pass.mName === 'string') return pass.mName;
   if (pass.mType === 'image' || pass.mType === 2) return 'Image';
   if (pass.mType === 'common' || pass.mType === 4) return 'Common';
@@ -68,7 +158,7 @@ function getPassName(pass: any, index: number, allPasses: any[]): string {
   if (pass.mType === 'buffer' || pass.mType === 3) {
     const bufferIndex = allPasses
       .slice(0, index + 1)
-      .filter((p) => p.mType === 'buffer' || p.mType === 3).length;
+      .filter(p => p.mType === 'buffer' || p.mType === 3).length;
     const letters = ['A', 'B', 'C', 'D'];
     return `Buffer ${letters[bufferIndex - 1] || bufferIndex}`;
   }
@@ -88,12 +178,10 @@ function mapPassType(typeName: string | number): PassType {
  * Zaawansowana ekstrakcja kodu passu.
  * Sprawdza właściwości passu, edytor Monaco, CodeMirror i elementy DOM.
  */
-function extractPassCode(p: any, index: number, effect: any, g: any): string {
-  const winAny = window as any;
-
+function extractPassCode(p: ShadertoyPassLike, index: number, effect: ShadertoyEffectLike | null, g?: Record<string, unknown>): string {
   // 1. Check Monaco editor models first (live text buffer as typed by user)
-  if (winAny.monaco?.editor) {
-    const models = winAny.monaco.editor.getModels?.();
+  if (win.monaco?.editor) {
+    const models = win.monaco.editor.getModels?.();
     if (models && models[index]) {
       const val = models[index].getValue();
       if (typeof val === 'string' && val.length > 0) {
@@ -116,14 +204,16 @@ function extractPassCode(p: any, index: number, effect: any, g: any): string {
         return val;
       }
     }
-    if (typeof p.mEditor.value === 'string' && p.mEditor.value.length > 0) {
-      return p.mEditor.value;
+    const editorObj = p.mEditor as Record<string, unknown>;
+    if (typeof editorObj.value === 'string' && editorObj.value.length > 0) {
+      return editorObj.value;
     }
   }
 
   // 3. Check active editor in effect or g
   if (effect && effect.mActivePass === index) {
-    const ed = effect.mEditor || g?.mEditor;
+    const gObj = g as Record<string, unknown> | undefined;
+    const ed = (effect.mEditor || gObj?.mEditor) as { getValue?: () => string } | undefined;
     if (ed && typeof ed.getValue === 'function') {
       const val = ed.getValue();
       if (typeof val === 'string' && val.length > 0) {
@@ -133,7 +223,7 @@ function extractPassCode(p: any, index: number, effect: any, g: any): string {
   }
 
   // 4. Check CodeMirror instance in DOM
-  const cmElem = document.querySelector('.CodeMirror') as any;
+  const cmElem = document.querySelector('.CodeMirror') as (Element & { CodeMirror?: { getValue?: () => string } }) | null;
   if (cmElem && cmElem.CodeMirror && typeof cmElem.CodeMirror.getValue === 'function') {
     const val = cmElem.CodeMirror.getValue();
     if (typeof val === 'string' && val.length > 0) {
@@ -142,15 +232,20 @@ function extractPassCode(p: any, index: number, effect: any, g: any): string {
   }
 
   // 5. Check textarea elements in page
-  const textareas = document.querySelectorAll('textarea');
-  for (let i = 0; i < textareas.length; i++) {
-    const val = textareas[i].value;
+  const textareas = Array.from(document.querySelectorAll('textarea'));
+  for (const textarea of textareas) {
+    const val = textarea.value;
     if (val && (val.includes('mainImage') || val.includes('void main'))) {
       return val;
     }
   }
 
-  // 6. Fallback to pass object properties (mSource, mShaderCode, etc.)
+  // 6. Direct pass properties (mSource, mShaderCode, mCode)
+  if (typeof p.mSource === 'string' && p.mSource.length > 0) return p.mSource;
+  if (typeof p.mShaderCode === 'string' && p.mShaderCode.length > 0) return p.mShaderCode;
+  if (typeof p.mCode === 'string' && p.mCode.length > 0) return p.mCode;
+
+  // 7. Fallback to any code-like property in pass object
   for (const k of Object.keys(p)) {
     const val = p[k];
     if (typeof val === 'string' && val.length > 0) {
@@ -159,6 +254,7 @@ function extractPassCode(p: any, index: number, effect: any, g: any): string {
         k.toLowerCase().includes('shader') ||
         k.toLowerCase().includes('source') ||
         val.includes('mainImage') ||
+        val.includes('mainSound') ||
         val.includes('void main')
       ) {
         return val;
@@ -195,24 +291,24 @@ function extractShaderSnapshot(): ShaderToyExport | null {
     hasliked: srcInfo?.hasliked ?? 0,
   };
 
-  const renderpass: ShaderToyRenderPass[] = passes.map((p: any, index: number) => {
+  const renderpass: ShaderToyRenderPass[] = passes.map((p: ShadertoyPassLike, index: number) => {
     const passName = getPassName(p, index, passes);
-    const passType = mapPassType(p.mType);
+    const passType = mapPassType(p.mType ?? 'image');
     const code = extractPassCode(p, index, effect, g);
 
     // Ekstrakcja wejść iChannel0..3
     const inputs: ShaderToyInput[] = [];
     if (p.mInputs && Array.isArray(p.mInputs)) {
-      p.mInputs.forEach((inp: any, channelIndex: number) => {
+      p.mInputs.forEach((inp: ShaderToyInputRaw, channelIndex: number) => {
         if (!inp) return;
 
         // Log właściwości inputu dla diagnostyki
-        const inpClean: Record<string, any> = {};
+        const inpClean: Record<string, unknown> = {};
         for (const k of Object.keys(inp)) {
           const v = inp[k];
           if (typeof v === 'string' || typeof v === 'number' || typeof v === 'boolean') {
             inpClean[k] = v;
-          } else if (v && typeof v === 'object' && !v.nodeType && !v.canvas) {
+          } else if (v && typeof v === 'object' && !(v as { nodeType?: unknown }).nodeType && !(v as { canvas?: unknown }).canvas) {
             try {
               inpClean[k] = JSON.parse(JSON.stringify(v));
             } catch {
@@ -242,8 +338,8 @@ function extractShaderSnapshot(): ShaderToyExport | null {
           ctype: String(ctypeVal),
           channel: channelIndex,
           sampler: {
-            filter: inp.mSampler?.filter || 'linear',
-            wrap: inp.mSampler?.wrap || 'clamp',
+            filter: (inp.mSampler?.filter as 'nearest' | 'linear' | 'mipmap') || 'linear',
+            wrap: (inp.mSampler?.wrap as 'clamp' | 'repeat') || 'clamp',
             vflip: inp.mSampler?.vflip ?? true,
             srgb: inp.mSampler?.srgb ?? false,
             internal: inp.mSampler?.internal || '',
@@ -256,7 +352,7 @@ function extractShaderSnapshot(): ShaderToyExport | null {
     return {
       name: passName,
       type: passType,
-      description: p.mDescription || '',
+      description: (p.mDescription || p.description || '') as string,
       code: code || '',
       inputs: inputs,
       outputs: [{ id: index, channel: 0 }],
@@ -314,7 +410,7 @@ function collectAllDiagnostics(): ShaderCompileDiagnostic[] {
 
   const allDiagnostics: ShaderCompileDiagnostic[] = [];
 
-  passes.forEach((p: any, index: number) => {
+  passes.forEach((p: ShadertoyPassLike, index: number) => {
     const passName = getPassName(p, index, passes);
     const errorText = p.mError || p.mErrorLog || '';
     if (errorText && typeof errorText === 'string') {
@@ -335,7 +431,7 @@ function applyPassCode(passName: string, newCode: string, triggerRecompile = tru
   if (!effect || !passes) return false;
 
   const passIndex = passes.findIndex(
-    (p: any, idx: number) => getPassName(p, idx, passes).toLowerCase() === passName.toLowerCase()
+    (p: ShadertoyPassLike, idx: number) => getPassName(p, idx, passes).toLowerCase() === passName.toLowerCase(),
   );
 
   if (passIndex === -1) {
@@ -357,9 +453,8 @@ function applyPassCode(passName: string, newCode: string, triggerRecompile = tru
   isApplyingRemoteCode = true;
   try {
     // 1. Update Monaco Editor if present
-    const winAny = window as any;
-    if (winAny.monaco?.editor) {
-      const models = winAny.monaco.editor.getModels?.();
+    if (win.monaco?.editor) {
+      const models = win.monaco.editor.getModels?.();
       if (models && models[passIndex]) {
         if (models[passIndex].getValue() !== newCode) {
           models[passIndex].setValue(newCode);
@@ -372,12 +467,12 @@ function applyPassCode(passName: string, newCode: string, triggerRecompile = tru
     }
 
     // 2. Update CodeMirror
-    const ed = effect.mEditor || g?.mEditor;
-    if (effect.mActivePass === passIndex && ed && typeof ed.setValue === 'function') {
+    const ed = (effect.mEditor || g?.mEditor) as { getValue?: () => string; setValue?: (v: string) => void } | undefined;
+    if (effect.mActivePass === passIndex && ed && typeof ed.setValue === 'function' && typeof ed.getValue === 'function') {
       if (ed.getValue() !== newCode) {
         ed.setValue(newCode);
       }
-    } else if (pass.mEditor && typeof pass.mEditor.setValue === 'function') {
+    } else if (pass.mEditor && typeof pass.mEditor.setValue === 'function' && typeof pass.mEditor.getValue === 'function') {
       if (pass.mEditor.getValue() !== newCode) {
         pass.mEditor.setValue(newCode);
       }
@@ -456,7 +551,7 @@ function sendRegistrationAndSnapshot() {
 
   const snapshot = extractShaderSnapshot();
   if (snapshot) {
-    const passInfo = snapshot.Shader.renderpass.map((p) => `${p.name} (code: ${p.code.length}b)`);
+    const passInfo = snapshot.Shader.renderpass.map(p => `${p.name} (code: ${p.code.length}b)`);
     sendDebugLog(`Sending SHADER_SNAPSHOT: ${passInfo.join(', ')}`);
     postToBridge({
       type: 'SHADER_SNAPSHOT',
@@ -472,7 +567,6 @@ function sendRegistrationAndSnapshot() {
 }
 
 let lastReportedPassName = '';
-let isIgnoringNextPassReport = false;
 
 function activatePassTab(passName: string): boolean {
   const g = win.gShaderToy;
@@ -481,7 +575,7 @@ function activatePassTab(passName: string): boolean {
   if (!passes) return false;
 
   const targetIndex = passes.findIndex(
-    (p: any, idx: number) => getPassName(p, idx, passes).toLowerCase() === passName.toLowerCase()
+    (p: ShadertoyPassLike, idx: number) => getPassName(p, idx, passes).toLowerCase() === passName.toLowerCase(),
   );
 
   if (targetIndex === -1) {
@@ -531,7 +625,6 @@ function activatePassTab(passName: string): boolean {
         hEl.dispatchEvent(new MouseEvent('mouseup', { bubbles: true, cancelable: true, view: window }));
         hEl.click();
         sendDebugLog(`[activatePassTab] Clicked DOM element: <${hEl.tagName.toLowerCase()} class="${hEl.className}"> with text "${passName}"`);
-        clicked = true;
         break;
       }
     }
@@ -539,10 +632,9 @@ function activatePassTab(passName: string): boolean {
 
   // 3. If Monaco Editor is present, synchronize model
   try {
-    const winAny = window as any;
-    if (winAny.monaco?.editor) {
-      const models = winAny.monaco.editor.getModels?.();
-      const editors = winAny.monaco.editor.getEditors?.();
+    if (win.monaco?.editor) {
+      const models = win.monaco.editor.getModels?.();
+      const editors = win.monaco.editor.getEditors?.();
       if (editors && editors.length > 0 && models && models[targetIndex]) {
         if (editors[0].getModel() !== models[targetIndex]) {
           editors[0].setModel(models[targetIndex]);
@@ -558,9 +650,8 @@ function activatePassTab(passName: string): boolean {
 }
 
 function hookMonacoModelChange() {
-  const winAny = window as any;
-  if (winAny.monaco?.editor) {
-    const editors = winAny.monaco.editor.getEditors?.();
+  if (win.monaco?.editor) {
+    const editors = win.monaco.editor.getEditors?.();
     if (editors && editors.length > 0) {
       const ed = editors[0];
       if (ed && typeof ed.onDidChangeModel === 'function' && !ed.__shadertoyAiHooked) {
@@ -581,12 +672,11 @@ function getActivePassIndex(): number {
   if (!passes || !Array.isArray(passes)) return -1;
 
   // 1. Sprawdź edytor Monaco jeśli obecny (najbardziej wiarygodny stan edytora)
-  const winAny = window as any;
-  if (winAny.monaco?.editor) {
-    const editors = winAny.monaco.editor.getEditors?.();
+  if (win.monaco?.editor) {
+    const editors = win.monaco.editor.getEditors?.();
     if (editors && editors.length > 0) {
       const curModel = editors[0].getModel();
-      const models = winAny.monaco.editor.getModels?.();
+      const models = win.monaco.editor.getModels?.();
       if (curModel && models && Array.isArray(models)) {
         const mIdx = models.indexOf(curModel);
         if (mIdx >= 0 && mIdx < passes.length) {
@@ -619,9 +709,27 @@ function getActivePassIndex(): number {
 }
 
 let programmaticSwitchUntil = 0;
+let lastKnownPassesSignature = '';
+
+function checkAndSyncPasses() {
+  const effect = getEffect();
+  const passes = effect?.mPasses;
+  if (!effect || !passes || !Array.isArray(passes) || passes.length === 0) return;
+
+  const signature = passes.map((p: ShadertoyPassLike, idx: number) => `${p.mType}:${getPassName(p, idx, passes)}`).join(';');
+  if (signature !== lastKnownPassesSignature) {
+    const isFirstTime = lastKnownPassesSignature === '';
+    lastKnownPassesSignature = signature;
+    sendDebugLog(`[PassSync] Pass structure changed (first=${isFirstTime}): ${signature}`);
+    sendRegistrationAndSnapshot();
+    hookMonacoEditorContentEvents();
+  }
+}
 
 function reportPassSwitch(passName: string) {
   if (!passName) return;
+  checkAndSyncPasses();
+
   if (Date.now() < programmaticSwitchUntil) {
     lastReportedPassName = passName;
     return;
@@ -645,6 +753,7 @@ function checkAndReportActivePass() {
   const passes = effect?.mPasses;
   if (!effect || !passes) return;
 
+  checkAndSyncPasses();
   hookMonacoModelChange();
 
   const activeIdx = getActivePassIndex();
@@ -690,7 +799,7 @@ window.addEventListener('message', (event) => {
   }
 });
 
-let passUpdateDebounceTimer: any = null;
+let passUpdateDebounceTimer: ReturnType<typeof setTimeout> | null = null;
 
 function schedulePassUpdate(hintIndex?: number) {
   if (isApplyingRemoteCode) return;
@@ -731,35 +840,34 @@ function sendPassUpdate(hintIndex?: number) {
 }
 
 function hookMonacoEditorContentEvents() {
-  const winAny = window as any;
-  if (!winAny.monaco?.editor) return;
+  if (!win.monaco?.editor) return;
 
-  const hookModel = (model: any, idx?: number) => {
+  const hookModel = (model: MonacoModelLike | null, idx?: number) => {
     if (!model || model.__shadertoyAiContentHooked) return;
     model.__shadertoyAiContentHooked = true;
     model.onDidChangeContent(() => {
       if (isApplyingRemoteCode) return;
-      const models = winAny.monaco.editor.getModels?.() || [];
+      const models = win.monaco?.editor?.getModels?.() || [];
       const mIdx = typeof idx === 'number' ? idx : models.indexOf(model);
       schedulePassUpdate(mIdx >= 0 ? mIdx : undefined);
     });
   };
 
-  const models = winAny.monaco.editor.getModels?.();
+  const models = win.monaco?.editor?.getModels?.();
   if (Array.isArray(models)) {
-    models.forEach((m: any, i: number) => hookModel(m, i));
+    models.forEach((m: MonacoModelLike, i: number) => hookModel(m, i));
   }
 
-  if (typeof winAny.monaco.editor.onDidCreateModel === 'function' && !winAny.__shadertoyAiModelCreateHooked) {
-    winAny.__shadertoyAiModelCreateHooked = true;
-    winAny.monaco.editor.onDidCreateModel((m: any) => {
+  if (typeof win.monaco?.editor?.onDidCreateModel === 'function' && !win.__shadertoyAiModelCreateHooked) {
+    win.__shadertoyAiModelCreateHooked = true;
+    win.monaco.editor.onDidCreateModel((m: MonacoModelLike) => {
       hookModel(m);
     });
   }
 
-  const editors = winAny.monaco.editor.getEditors?.();
+  const editors = win.monaco?.editor?.getEditors?.();
   if (Array.isArray(editors)) {
-    editors.forEach((ed: any) => {
+    editors.forEach((ed: MonacoEditorLike) => {
       if (ed && typeof ed.onDidChangeModelContent === 'function' && !ed.__shadertoyAiContentHooked) {
         ed.__shadertoyAiContentHooked = true;
         ed.onDidChangeModelContent(() => {
@@ -781,7 +889,7 @@ function setupEditorWatcher() {
   setInterval(hookMonacoEditorContentEvents, 1000);
 
   // 2. Hook CodeMirror / Native Shadertoy Editor
-  const ed = effect?.mEditor || g?.mEditor;
+  const ed = (effect?.mEditor || g?.mEditor) as { on?: (event: string, cb: () => void) => void; __shadertoyAiHooked?: boolean } | undefined;
   if (ed && typeof ed.on === 'function' && !ed.__shadertoyAiHooked) {
     ed.__shadertoyAiHooked = true;
     ed.on('change', () => {
@@ -799,11 +907,28 @@ function setupEditorWatcher() {
     }
   });
 
+  // Pass structure change watcher (tab add / remove)
+  setInterval(checkAndSyncPasses, 300);
+
   // Active pass watcher
   hookMonacoModelChange();
   setInterval(checkAndReportActivePass, 250);
 
+  // Dynamic tab bar additions/removals observer
+  try {
+    const observer = new MutationObserver(() => {
+      checkAndSyncPasses();
+      setTimeout(checkAndReportActivePass, 50);
+    });
+    observer.observe(document.body, { childList: true, subtree: true });
+  } catch (_) {}
+
   document.addEventListener('click', (e) => {
+    // When clicking any element (+ button, dropdown menu, close tab, etc.), check passes
+    setTimeout(checkAndSyncPasses, 50);
+    setTimeout(checkAndSyncPasses, 250);
+    setTimeout(checkAndSyncPasses, 700);
+
     const target = e.target as HTMLElement;
     if (target) {
       const tabEl = target.closest('[id^="tab"]') as HTMLElement;
@@ -816,6 +941,7 @@ function setupEditorWatcher() {
           if (pList && pList[passIdx]) {
             const name = getPassName(pList[passIdx], passIdx, pList);
             sendDebugLog(`[ClickWatcher] Direct click on tab #${tabEl.id} -> "${name}"`);
+            checkAndSyncPasses();
             reportPassSwitch(name);
             return;
           }

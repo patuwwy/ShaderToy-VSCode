@@ -3,12 +3,12 @@ import { SessionManager, TabSession } from '../session/session-manager';
 import { TempFileManager } from '../vfs/temp-file-manager';
 
 export type TreeItemData =
-  | { type: 'shader'; session: TabSession }
-  | { type: 'pass'; shaderId: string; passName: string }
-  | { type: 'metadata'; shaderId: string };
+  | { type: 'shader'; session: TabSession } |
+  { type: 'pass'; shaderId: string; passName: string } |
+  { type: 'metadata'; shaderId: string };
 
 export class ShadertoyTabsTreeProvider implements vscode.TreeDataProvider<TreeItemData> {
-  private _onDidChangeTreeData = new vscode.EventEmitter<TreeItemData | undefined | void>();
+  private _onDidChangeTreeData = new vscode.EventEmitter<TreeItemData | undefined>();
   public readonly onDidChangeTreeData = this._onDidChangeTreeData.event;
 
   private activeShaderId: string | null = null;
@@ -18,7 +18,7 @@ export class ShadertoyTabsTreeProvider implements vscode.TreeDataProvider<TreeIt
 
   constructor(
     private sessionManager: SessionManager,
-    private tempFileManager: TempFileManager
+    private tempFileManager: TempFileManager,
   ) {
     this.sessionManager.onDidSessionsChange(() => {
       this.refresh();
@@ -26,7 +26,7 @@ export class ShadertoyTabsTreeProvider implements vscode.TreeDataProvider<TreeIt
   }
 
   public refresh(): void {
-    this._onDidChangeTreeData.fire();
+    this._onDidChangeTreeData.fire(undefined);
   }
 
   public setActivePass(shaderId: string, passName: string): void {
@@ -50,7 +50,7 @@ export class ShadertoyTabsTreeProvider implements vscode.TreeDataProvider<TreeIt
       const { session } = element;
       const item = new vscode.TreeItem(
         session.title || 'Shader',
-        vscode.TreeItemCollapsibleState.Expanded
+        vscode.TreeItemCollapsibleState.Expanded,
       );
       item.id = `shader:${session.shaderId}`;
       item.description = `[${session.shaderId}]`;
@@ -114,15 +114,15 @@ export class ShadertoyTabsTreeProvider implements vscode.TreeDataProvider<TreeIt
       if (sessions.length === 0) {
         return [];
       }
-      return sessions.map((s) => ({ type: 'shader', session: s }));
+      return sessions.map(s => ({ type: 'shader', session: s }));
     }
 
     if (element.type === 'shader') {
       const { session } = element;
       const passNames = this.sessionManager.getPassNames(session.shaderId);
 
-      const items: TreeItemData[] = passNames.map((name) =>
-        this.getPassItem(session.shaderId, name)
+      const items: TreeItemData[] = passNames.map(name =>
+        this.getPassItem(session.shaderId, name),
       );
 
       let metaItem = this.metadataItems.get(session.shaderId);

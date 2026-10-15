@@ -2,11 +2,12 @@
   "name": "shadertoy-to-vscode",
   "displayName": "ShaderToy to VSCode",
   "description": "Browser extension connecting shadertoy.com with VS Code",
-  "version": "0.1.0",
+  "version": "0.2.0",
   "scripts": {
     "build": "node esbuild.js --production",
     "watch": "node esbuild.js --watch",
-    "check-types": "tsc --noEmit"
+    "check-types": "tsc --noEmit",
+    "lint": "npm run check-types"
   },
   "devDependencies": {
     "@types/chrome": "^0.3.5",

@@ -26,7 +26,9 @@ export class ShadertoyFileSystemProvider implements vscode.FileSystemProvider {
   }
 
   public watch(_uri: vscode.Uri): vscode.Disposable {
-    return new vscode.Disposable(() => {});
+    return new vscode.Disposable(() => {
+      // no-op watcher
+    });
   }
 
   public stat(uri: vscode.Uri): vscode.FileStat {
@@ -87,7 +89,7 @@ export class ShadertoyFileSystemProvider implements vscode.FileSystemProvider {
     // Root: lista wszystkich aktywnych shaderów
     if (parts.length === 0) {
       const sessions = this.sessionManager.getAllSessions();
-      return sessions.map((s) => [s.shaderId, vscode.FileType.Directory]);
+      return sessions.map(s => [s.shaderId, vscode.FileType.Directory]);
     }
 
     // Wewnątrz folderu shadera /<shaderId>
@@ -136,7 +138,7 @@ export class ShadertoyFileSystemProvider implements vscode.FileSystemProvider {
   public writeFile(
     uri: vscode.Uri,
     content: Uint8Array,
-    _options: { create: boolean; overwrite: boolean }
+    _options: { create: boolean; overwrite: boolean },
   ): void {
     const parts = this.parsePath(uri.path);
     if (parts.length < 2) {
@@ -155,8 +157,9 @@ export class ShadertoyFileSystemProvider implements vscode.FileSystemProvider {
           this.onUserSavedMetadata(shaderId, exp);
         }
         this._emitter.fire([{ type: vscode.FileChangeType.Changed, uri }]);
-      } catch (err: any) {
-        vscode.window.showErrorMessage(`ShaderToy AI: Invalid shader.json format: ${err.message}`);
+      } catch (err: unknown) {
+        const errMsg = err instanceof Error ? err.message : String(err);
+        vscode.window.showErrorMessage(`ShaderToy AI: Invalid shader.json format: ${errMsg}`);
       }
       return;
     }
@@ -191,7 +194,6 @@ export class ShadertoyFileSystemProvider implements vscode.FileSystemProvider {
   }
 
   private parsePath(p: string): string[] {
-    return p.split('/').map((s) => s.trim()).filter((s) => s.length > 0);
+    return p.split('/').map(s => s.trim()).filter(s => s.length > 0);
   }
 }
-

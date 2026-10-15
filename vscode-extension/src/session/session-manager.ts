@@ -1,5 +1,5 @@
 import * as vscode from 'vscode';
-import { ShaderToyExport, ShaderToyRenderPass } from '@shared/shadertoy';
+import { ShaderToyExport } from '@shared/shadertoy';
 
 export interface TabSession {
   tabSessionId: string;
@@ -64,15 +64,17 @@ export class SessionManager {
     this.shaderExports.set(shaderId, shader);
 
     // Inicjalizacja kodów passów
-    if (!this.shaderCodes.has(shaderId)) {
-      this.shaderCodes.set(shaderId, new Map());
+    let passesMap = this.shaderCodes.get(shaderId);
+    if (!passesMap) {
+      passesMap = new Map();
+      this.shaderCodes.set(shaderId, passesMap);
     }
-    const passesMap = this.shaderCodes.get(shaderId)!;
     shader.Shader?.renderpass?.forEach((p) => {
       passesMap.set(p.name, p.code || '');
     });
 
     this._onDidSessionsChange.fire();
+    return shaderId;
   }
 
   public updatePassCode(shaderId: string, passName: string, code: string, notify = true) {
@@ -86,7 +88,7 @@ export class SessionManager {
     // Zaktualizuj też w przechowywanym eksporcie JSON
     const exp = this.shaderExports.get(shaderId);
     if (exp?.Shader?.renderpass) {
-      const pass = exp.Shader.renderpass.find((p) => p.name.toLowerCase() === passName.toLowerCase());
+      const pass = exp.Shader.renderpass.find(p => p.name.toLowerCase() === passName.toLowerCase());
       if (pass) {
         pass.code = code;
       }
@@ -117,7 +119,7 @@ export class SessionManager {
   public getPassNames(shaderId: string): string[] {
     const exp = this.shaderExports.get(shaderId);
     if (exp?.Shader?.renderpass) {
-      return exp.Shader.renderpass.map((p) => p.name);
+      return exp.Shader.renderpass.map(p => p.name);
     }
     const codes = this.shaderCodes.get(shaderId);
     if (codes) {
@@ -141,4 +143,3 @@ export class SessionManager {
     return this.getSessionByShaderId(shaderId)?.tabSessionId;
   }
 }
-

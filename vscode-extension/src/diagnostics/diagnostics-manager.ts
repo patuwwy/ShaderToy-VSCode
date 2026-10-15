@@ -12,7 +12,7 @@ export class DiagnosticsManager {
   public updateDiagnostics(
     shaderId: string,
     diagnostics: ShaderCompileDiagnostic[],
-    success: boolean
+    success: boolean,
   ) {
     if (success && (!diagnostics || diagnostics.length === 0)) {
       // Wyczyść błędy dla wszystkich passów tego shadera
@@ -33,13 +33,15 @@ export class DiagnosticsManager {
       const line = Math.max(0, d.line - 1);
       const range = new vscode.Range(line, 0, line, 500);
       const severity =
-        d.severity === 'warning'
-          ? vscode.DiagnosticSeverity.Warning
-          : vscode.DiagnosticSeverity.Error;
+        d.severity === 'warning' ?
+          vscode.DiagnosticSeverity.Warning :
+          vscode.DiagnosticSeverity.Error;
 
       const diagnostic = new vscode.Diagnostic(range, d.message, severity);
       diagnostic.source = 'Shadertoy WebGL';
-      passDiagnosticsMap.get(passName)!.push(diagnostic);
+      const diags = passDiagnosticsMap.get(passName) || [];
+      diags.push(diagnostic);
+      passDiagnosticsMap.set(passName, diags);
     });
 
     // Wyczyść i zastosuj nowe diagnostyki
@@ -47,7 +49,7 @@ export class DiagnosticsManager {
 
     passDiagnosticsMap.forEach((diags, passName) => {
       const fileUri = vscode.Uri.parse(
-        `${ShadertoyFileSystemProvider.SCHEME}:/${shaderId}/${passName}.glsl`
+        `${ShadertoyFileSystemProvider.SCHEME}:/${shaderId}/${passName}.glsl`,
       );
       this.collection.set(fileUri, diags);
     });
@@ -67,4 +69,3 @@ export class DiagnosticsManager {
     this.collection.dispose();
   }
 }
-

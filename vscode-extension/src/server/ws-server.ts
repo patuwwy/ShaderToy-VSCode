@@ -5,7 +5,7 @@ import {
   ProtocolMessage,
   AuthRequestMessage,
   AuthResponseMessage,
-  WS_PROTOCOL_VERSION,
+  DebugLogMessage,
 } from '@shared/protocol';
 
 import { appendLog } from '../logger';
@@ -76,8 +76,9 @@ export class ShadertoyWSServer {
         const msg: ProtocolMessage = JSON.parse(data.toString());
         appendLog('VSCode Server', `Received message: ${msg.type}`, msg);
         await this.handleMessage(msg, ws);
-      } catch (e: any) {
-        appendLog('VSCode Server', `Failed to parse message: ${e.message}`);
+      } catch (e: unknown) {
+        const errMsg = e instanceof Error ? e.message : String(e);
+        appendLog('VSCode Server', `Failed to parse message: ${errMsg}`);
         console.error('[ShaderToy VSCode Server] Failed to parse message:', e);
       }
     });
@@ -88,7 +89,7 @@ export class ShadertoyWSServer {
       this.pendingMessages.delete(ws);
       appendLog('VSCode Server', 'Browser client disconnected.');
       console.log('[ShaderToy VSCode Server] Browser client disconnected.');
-      this.onClientDisconnectedCallbacks.forEach((cb) => cb());
+      this.onClientDisconnectedCallbacks.forEach(cb => cb());
     });
   }
 
@@ -99,7 +100,7 @@ export class ShadertoyWSServer {
     }
 
     if (msg.type === 'DEBUG_LOG') {
-      const debugMsg = msg as any;
+      const debugMsg = msg as DebugLogMessage;
       appendLog(`Browser [${debugMsg.component}]`, debugMsg.message, debugMsg.data);
       return;
     }
@@ -113,7 +114,7 @@ export class ShadertoyWSServer {
       return;
     }
 
-    this.onMessageCallbacks.forEach((cb) => cb(msg, ws));
+    this.onMessageCallbacks.forEach(cb => cb(msg, ws));
   }
 
   private async handleAuthRequest(msg: AuthRequestMessage, ws: WebSocket) {
@@ -136,10 +137,10 @@ export class ShadertoyWSServer {
     this.pendingMessages.delete(ws);
     pending.forEach((msg) => {
       appendLog('VSCode Server', `Processing queued message: ${msg.type}`);
-      this.onMessageCallbacks.forEach((cb) => cb(msg, ws));
+      this.onMessageCallbacks.forEach(cb => cb(msg, ws));
     });
 
-    this.onClientConnectedCallbacks.forEach((cb) => cb());
+    this.onClientConnectedCallbacks.forEach(cb => cb());
   }
 
   public broadcast(msg: ProtocolMessage) {
@@ -167,4 +168,3 @@ export class ShadertoyWSServer {
     return this.authenticatedClients.size > 0;
   }
 }
-

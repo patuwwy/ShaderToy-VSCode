@@ -1,0 +1,101 @@
+name: CI & Release
+
+on:
+  push:
+    branches:
+      - main
+    tags:
+      - 'v*'
+  pull_request:
+    branches:
+      - main
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  lint:
+    name: Lint & Typecheck
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+
+      - name: Install dependencies
+        run: npm run ci:all
+
+      - name: Run lint
+        run: npm run lint
+
+  build:
+    name: Build & Package
+    needs: lint
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+
+      - name: Determine Version
+        id: set_version
+        run: |
+          if [[ "${{ github.ref }}" == refs/tags/v* ]]; then
+            RAW_TAG="${{ github.ref_name }}"
+            VER="${RAW_TAG#v}"
+            echo "Setting version from git tag: $RAW_TAG -> $VER"
+            node scripts/set-version.js "$RAW_TAG"
+            echo "VERSION=$VER" >> $GITHUB_ENV
+          else
+            VER=$(node -p "require('./package.json').version")
+            echo "Using current version from package.json: $VER"
+            echo "VERSION=$VER" >> $GITHUB_ENV
+          fi
+
+      - name: Install dependencies
+        run: npm run ci:all
+
+      - name: Build extensions
+        run: npm run build
+
+      - name: Package VS Code extension (.vsix)
+        run: |
+          cd vscode-extension
+          npx @vscode/vsce package --no-dependencies --out "../shadertoy-vscode-${{ env.VERSION }}.vsix"
+
+      - name: Package Browser extension (.zip)
+        run: |
+          cd browser-extension/dist
+          zip -r "../../shadertoy-browser-extension-${{ env.VERSION }}.zip" .
+
+      - name: Upload Build Artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: extensions-${{ env.VERSION }}
+          path: |
+            shadertoy-vscode-*.vsix
+            shadertoy-browser-extension-*.zip
+          retention-days: 14
+
+      - name: Create GitHub Release
+        if: startsWith(github.ref, 'refs/tags/v')
+        uses: softprops/action-gh-release@v2
+        with:
+          name: Release ${{ github.ref_name }}
+          tag_name: ${{ github.ref_name }}
+          generate_release_notes: true
+          files: |
+            shadertoy-vscode-*.vsix
+            shadertoy-browser-extension-*.zip
+

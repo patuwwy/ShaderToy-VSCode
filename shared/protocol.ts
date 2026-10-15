@@ -7,18 +7,19 @@ export const WS_PROTOCOL_VERSION = '1.0.0';
  * Typy wiadomości w kanale WebSocket
  */
 export type MessageType =
-  | 'AUTH_REQUEST'
-  | 'AUTH_RESPONSE'
-  | 'TAB_REGISTER'
-  | 'TAB_UNREGISTER'
-  | 'SHADER_SNAPSHOT'
-  | 'UPDATE_PASS'
-  | 'UPDATE_METADATA'
-  | 'RECOMPILE_COMMAND'
-  | 'DIAGNOSTICS'
-  | 'SYNC_CONFLICT'
-  | 'SET_ACTIVE_PASS'
-  | 'DEBUG_LOG';
+  | 'AUTH_REQUEST' |
+  'AUTH_RESPONSE' |
+  'TAB_REGISTER' |
+  'TAB_UNREGISTER' |
+  'SHADER_SNAPSHOT' |
+  'REQUEST_SNAPSHOT' |
+  'UPDATE_PASS' |
+  'UPDATE_METADATA' |
+  'RECOMPILE_COMMAND' |
+  'DIAGNOSTICS' |
+  'SYNC_CONFLICT' |
+  'SET_ACTIVE_PASS' |
+  'DEBUG_LOG';
 
 export interface BaseMessage {
   type: MessageType;
@@ -30,7 +31,7 @@ export interface DebugLogMessage extends BaseMessage {
   type: 'DEBUG_LOG';
   component: 'in-page' | 'content' | 'background' | 'vscode';
   message: string;
-  data?: any;
+  data?: unknown;
 }
 
 // 1. Handshake i parowanie One-Click
@@ -122,17 +123,24 @@ export interface SetActivePassMessage extends BaseMessage {
   passName: string;
 }
 
-export type ProtocolMessage =
-  | AuthRequestMessage
-  | AuthResponseMessage
-  | TabRegisterMessage
-  | TabUnregisterMessage
-  | ShaderSnapshotMessage
-  | UpdatePassMessage
-  | UpdateMetadataMessage
-  | RecompileCommandMessage
-  | DiagnosticsMessage
-  | SyncConflictMessage
-  | SetActivePassMessage
-  | DebugLogMessage;
+// 9.5. Żądanie przesłania pełnego snapshotu
+export interface RequestSnapshotMessage extends BaseMessage {
+  type: 'REQUEST_SNAPSHOT';
+  tabSessionId?: string;
+  shaderId?: string;
+}
 
+export type ProtocolMessage =
+  | AuthRequestMessage |
+  AuthResponseMessage |
+  TabRegisterMessage |
+  TabUnregisterMessage |
+  ShaderSnapshotMessage |
+  RequestSnapshotMessage |
+  UpdatePassMessage |
+  UpdateMetadataMessage |
+  RecompileCommandMessage |
+  DiagnosticsMessage |
+  SyncConflictMessage |
+  SetActivePassMessage |
+  DebugLogMessage;

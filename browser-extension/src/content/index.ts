@@ -27,8 +27,9 @@ window.addEventListener('message', (event) => {
     }).catch((err) => {
       console.debug('[ShaderToy to VSCode Content] Failed to send message to background:', err.message);
     });
-  } catch (err: any) {
-    console.debug('[ShaderToy to VSCode Content] sendMessage exception (context inactive):', err.message);
+  } catch (err: unknown) {
+    const errMsg = err instanceof Error ? err.message : String(err);
+    console.debug('[ShaderToy to VSCode Content] sendMessage exception (context inactive):', errMsg);
   }
 });
 
@@ -41,7 +42,7 @@ chrome.runtime.onMessage.addListener((message, _sender, sendResponse) => {
         type: message.type,
         payload: message.payload,
       },
-      '*'
+      '*',
     );
     sendResponse({ received: true });
   }

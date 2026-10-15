@@ -1,6 +1,5 @@
 const esbuild = require('esbuild');
 const fs = require('fs');
-const path = require('path');
 
 const isProduction = process.argv.includes('--production');
 const isWatch = process.argv.includes('--watch');
@@ -18,10 +17,10 @@ function copyStaticFiles() {
 /** @type {import('esbuild').BuildOptions} */
 const buildOptions = {
   entryPoints: {
-    background: 'src/background/index.ts',
-    content: 'src/content/index.ts',
+    'background': 'src/background/index.ts',
+    'content': 'src/content/index.ts',
     'in-page': 'src/content/in-page.ts',
-    popup: 'src/popup/index.ts',
+    'popup': 'src/popup/index.ts',
   },
   bundle: true,
   outdir: 'dist',
@@ -62,4 +61,3 @@ main().catch((err) => {
   console.error(err);
   process.exit(1);
 });
-

@@ -59,7 +59,7 @@ export async function activate(context: vscode.ExtensionContext) {
     vscode.workspace.registerFileSystemProvider(ShadertoyFileSystemProvider.SCHEME, vfs, {
       isCaseSensitive: true,
       isReadonly: false,
-    })
+    }),
   );
 
   // 3. Initialize DiagnosticsManager
@@ -81,8 +81,9 @@ export async function activate(context: vscode.ExtensionContext) {
 
   try {
     await server.start(port);
-  } catch (err: any) {
-    vscode.window.showErrorMessage(`ShaderToy VSCode: Failed to start server on port ${port}: ${err.message}`);
+  } catch (err: unknown) {
+    const errMsg = err instanceof Error ? err.message : String(err);
+    vscode.window.showErrorMessage(`ShaderToy VSCode: Failed to start server on port ${port}: ${errMsg}`);
   }
 
   // Active file synchronization flags
@@ -130,7 +131,7 @@ export async function activate(context: vscode.ExtensionContext) {
         const filePath = tempFileManager.writePass(effectiveShaderId, msg.passName, msg.code);
         const fileUri = vscode.Uri.file(filePath);
         const openDoc = vscode.workspace.textDocuments.find(
-          (d) => d.uri.toString() === fileUri.toString()
+          d => d.uri.toString() === fileUri.toString(),
         );
 
         // Conflict detection: only warn if VS Code editor has unsaved (dirty) edits
@@ -139,7 +140,7 @@ export async function activate(context: vscode.ExtensionContext) {
             `ShaderToy VSCode: Conflict detected in pass "${msg.passName}" (VS Code has unsaved edits).`,
             'Accept Shadertoy version',
             'Overwrite with VS Code version',
-            'Show Diff'
+            'Show Diff',
           );
 
           if (choice === 'Accept Shadertoy version') {
@@ -181,10 +182,20 @@ export async function activate(context: vscode.ExtensionContext) {
         if (!effectiveShaderId || !passName) break;
 
         const passNames = sessionManager.getPassNames(effectiveShaderId);
-        const matched = passNames.find(
-          (p) => p.toLowerCase() === passName.toLowerCase()
+        let matched = passNames.find(
+          p => p.toLowerCase() === passName.toLowerCase(),
         );
-        const canonicalPassName = matched || passName;
+        if (!matched) {
+          sessionManager.updatePassCode(effectiveShaderId, passName, '', true);
+          matched = passName;
+          server.broadcast({
+            type: 'REQUEST_SNAPSHOT',
+            tabSessionId: msg.tabSessionId,
+            shaderId: effectiveShaderId,
+            timestamp: Date.now(),
+          });
+        }
+        const canonicalPassName = matched;
 
         const filePath = tempFileManager.getPassFilePath(effectiveShaderId, canonicalPassName);
         const targetUri = vscode.Uri.file(filePath);
@@ -192,7 +203,9 @@ export async function activate(context: vscode.ExtensionContext) {
         // Highlight active pass in sidebar tree view
         treeProvider.setActivePass(effectiveShaderId, canonicalPassName);
         const passItem = treeProvider.getPassItem(effectiveShaderId, canonicalPassName);
-        treeView.reveal(passItem, { select: true, focus: false, expand: true }).then(undefined, () => {});
+        treeView.reveal(passItem, { select: true, focus: false, expand: true }).then(undefined, () => {
+          // ignore reveal failure
+        });
 
         lastReportedUri = targetUri.toString();
 
@@ -205,8 +218,9 @@ export async function activate(context: vscode.ExtensionContext) {
         try {
           const doc = await vscode.workspace.openTextDocument(targetUri);
           await vscode.window.showTextDocument(doc, { preview: false, preserveFocus: true });
-        } catch (err: any) {
-          console.warn('[ShaderToy VSCode] Failed to open pass file in editor:', err.message);
+        } catch (err: unknown) {
+          const errMsg = err instanceof Error ? err.message : String(err);
+          console.warn('[ShaderToy VSCode] Failed to open pass file in editor:', errMsg);
         }
         break;
       }
@@ -246,7 +260,9 @@ export async function activate(context: vscode.ExtensionContext) {
       // Highlight in sidebar tree view
       treeProvider.setActivePass(shaderId, passName);
       const passTreeItem = treeProvider.getPassItem(shaderId, passName);
-      treeView.reveal(passTreeItem, { select: true, focus: false, expand: true }).then(undefined, () => {});
+      treeView.reveal(passTreeItem, { select: true, focus: false, expand: true }).then(undefined, () => {
+        // ignore reveal failure
+      });
 
       appendLog('VSCode Extension', `Active file switched in VS Code -> sending SET_ACTIVE_PASS: ${passName} (${shaderId})`);
       const activePassMsg: SetActivePassMessage = {
@@ -257,7 +273,7 @@ export async function activate(context: vscode.ExtensionContext) {
         timestamp: Date.now(),
       };
       server.broadcast(activePassMsg);
-    })
+    }),
   );
 
   // 7. Live editing in VS Code -> immediately overwrite buffer in Shadertoy (without compiling)
@@ -290,7 +306,7 @@ export async function activate(context: vscode.ExtensionContext) {
         };
         server.broadcast(updateMsg);
       }, 100);
-    })
+    }),
   );
 
   // 8. Save pass file (.glsl) in VS Code (Ctrl+S) -> send to browser and compile
@@ -316,7 +332,7 @@ export async function activate(context: vscode.ExtensionContext) {
         timestamp: Date.now(),
       };
       server.broadcast(updateMsg);
-    })
+    }),
   );
 
   // Save metadata hook for VFS (if still used)
@@ -343,7 +359,7 @@ export async function activate(context: vscode.ExtensionContext) {
       };
       server.broadcast(recompileMsg);
       vscode.window.showInformationMessage('ShaderToy VSCode: Sent recompile command to browser.');
-    })
+    }),
   );
 
   context.subscriptions.push(
@@ -363,13 +379,14 @@ export async function activate(context: vscode.ExtensionContext) {
         try {
           const doc = await vscode.workspace.openTextDocument(vscode.Uri.file(passFile));
           await vscode.window.showTextDocument(doc);
-        } catch (err: any) {
-          console.warn('[ShaderToy VSCode] Failed to open pass in editor:', err.message);
+        } catch (err: unknown) {
+          const errMsg = err instanceof Error ? err.message : String(err);
+          console.warn('[ShaderToy VSCode] Failed to open pass in editor:', errMsg);
         }
       } else {
         vscode.window.showInformationMessage('ShaderToy VSCode: No active Shadertoy tabs found.');
       }
-    })
+    }),
   );
 
   context.subscriptions.push(
@@ -384,7 +401,7 @@ export async function activate(context: vscode.ExtensionContext) {
         await vscode.env.clipboard.writeText(dir);
         vscode.window.showInformationMessage(`ShaderToy VSCode: Copied folder path to clipboard: ${dir}`);
       }
-    })
+    }),
   );
 
   context.subscriptions.push(
@@ -399,7 +416,7 @@ export async function activate(context: vscode.ExtensionContext) {
         const terminal = vscode.window.createTerminal({ name: `Shader: ${shaderId}`, cwd: dir });
         terminal.show();
       }
-    })
+    }),
   );
 
   context.subscriptions.push(
@@ -413,7 +430,7 @@ export async function activate(context: vscode.ExtensionContext) {
         const dir = tempFileManager.getShaderDir(shaderId);
         vscode.commands.executeCommand('revealFileInOS', vscode.Uri.file(dir));
       }
-    })
+    }),
   );
 
   context.subscriptions.push(
@@ -422,7 +439,7 @@ export async function activate(context: vscode.ExtensionContext) {
       const newPort = vscode.workspace.getConfiguration('shadertoy').get<number>('port', DEFAULT_WS_PORT);
       await server.start(newPort);
       vscode.window.showInformationMessage(`ShaderToy VSCode: Server restarted on port ${newPort}.`);
-    })
+    }),
   );
 
   context.subscriptions.push({

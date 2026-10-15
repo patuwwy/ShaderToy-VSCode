@@ -15,7 +15,7 @@ export class TempFileManager {
     this.baseDir = this.resolveBaseDir();
     try {
       fs.mkdirSync(this.baseDir, { recursive: true });
-    } catch (e: any) {
+    } catch (e: unknown) {
       console.error('[ShaderToy VSCode] Failed to create base temp directory:', e);
     }
   }
@@ -180,4 +180,3 @@ export class TempFileManager {
     this.watchedDirs.clear();
   }
 }
-

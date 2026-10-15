@@ -1,9 +1,8 @@
 import * as fs from 'fs';
-import * as path from 'path';
 
 const logFilePath = 'c:\\github\\ShaderToyAI\\debug.log';
 
-export function appendLog(source: string, message: string, data?: any) {
+export function appendLog(source: string, message: string, data?: unknown) {
   const timestamp = new Date().toISOString();
   let line = `[${timestamp}] [${source}] ${message}`;
   if (data !== undefined) {
